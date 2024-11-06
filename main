@@ -1,0 +1,117 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <curl/curl.h>
+#include "cJSON.h"
+
+#define BUFFER_SIZE 4096
+
+// A structure to store the parsed data
+typedef struct {
+    char time[30];  // Store time as a string (ISO 8601 format)
+    double temperature;
+} WeatherData;
+
+// Structure for handling the response data
+struct MemoryStruct {
+    char *memory;
+    size_t size;
+};
+
+// Callback function for handling data received by libcurl
+size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp) {
+    size_t total_size = size * nmemb;
+    struct MemoryStruct *mem = (struct MemoryStruct *)userp;
+
+    char *ptr = realloc(mem->memory, mem->size + total_size + 1);
+    if(ptr == NULL) {
+        printf("Not enough memory (realloc returned NULL)\n");
+        return 0;
+    }
+
+    mem->memory = ptr;
+    memcpy(&(mem->memory[mem->size]), contents, total_size);
+    mem->size += total_size;
+    mem->memory[mem->size] = 0;
+
+    return total_size;
+}
+
+void parseJSONResponse(const char *json_string) {
+    // Parse the JSON string
+    cJSON *json = cJSON_Parse(json_string);
+    if (json == NULL) {
+        printf("Error parsing JSON data!\n");
+        return;
+    }
+
+    // Get the "current_weather" object
+    cJSON *current_weather = cJSON_GetObjectItem(json, "current_weather");
+    if (!current_weather) {
+        printf("Error finding 'current_weather' object!\n");
+        cJSON_Delete(json);
+        return;
+    }
+
+    // Extract the temperature
+    double temperature = cJSON_GetObjectItem(current_weather, "temperature")->valuedouble;
+
+    // Extract the time as a string
+    const char *time = cJSON_GetObjectItem(current_weather, "time")->valuestring;
+
+    // Print the extracted data
+    printf("Time: %s, Temperature: %.2f\n", time, temperature);
+
+    // Clean up
+    cJSON_Delete(json);
+}
+
+int main() {
+    CURL *curl;
+    CURLcode res;
+
+    struct MemoryStruct chunk;
+    chunk.memory = malloc(1);  // Start with a 1-byte buffer
+    chunk.size = 0;            // Initially, buffer is empty
+
+    // Initialize CURL
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    curl = curl_easy_init();
+    if (curl) {
+        // Set the URL for the request
+        curl_easy_setopt(curl, CURLOPT_URL, "https://api.open-meteo.com/v1/forecast?latitude=37.7749&longitude=-122.4194&current_weather=true");
+
+        // Set callback function to handle data
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
+
+        // Pass the chunk to the callback function
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+
+        // Perform the request
+        res = curl_easy_perform(curl);
+
+        // Check for errors
+        if (res != CURLE_OK) {
+            fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+        } else {
+            // Print the response for debugging purposes
+            printf("Response: %s\n", chunk.memory);
+
+            // Parse the JSON response to extract specific data
+            parseJSONResponse(chunk.memory);
+        }
+
+        // Clean up
+        curl_easy_cleanup(curl);
+    }
+
+    // Free the memory allocated for the response
+    if (chunk.memory) {
+        free(chunk.memory);
+    }
+
+    // Cleanup CURL
+    curl_global_cleanup();
+
+    return 0;
+}
