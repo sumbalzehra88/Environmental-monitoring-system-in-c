@@ -2,115 +2,145 @@
 #include <stdlib.h>
 #include <string.h>
 #include <curl/curl.h>
-#include "cJSON.h"
+#include <cjson/cJSON.h>
 
-#define BUFFER_SIZE 4096
+#define API_KEY "50fe3f0f4010bb987bff53d51ee641c4"
+// Updated API URL for 5-day forecast (using latitude and longitude for Karachi)
+#define API_URL "https://api.openweathermap.org/data/2.5/forecast?lat=24.8607&lon=67.0011&appid=" API_KEY
 
-// A structure to store the parsed data
-typedef struct {
-    char time[30];  // Store time as a string (ISO 8601 format)
-    double temperature;
-} WeatherData;
-
-// Structure for handling the response data
-struct MemoryStruct {
-    char *memory;
-    size_t size;
-};
-
-// Callback function for handling data received by libcurl
+// Callback function to handle the data received by API call through libcurl
 size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp) {
     size_t total_size = size * nmemb;
-    struct MemoryStruct *mem = (struct MemoryStruct *)userp;
-
-    char *ptr = realloc(mem->memory, mem->size + total_size + 1);
-    if(ptr == NULL) {
-        printf("Not enough memory (realloc returned NULL)\n");
-        return 0;
-    }
-
-    mem->memory = ptr;
-    memcpy(&(mem->memory[mem->size]), contents, total_size);
-    mem->size += total_size;
-    mem->memory[mem->size] = 0;
-
+    char *data = (char *)userp;
+    strncat(data, contents, total_size);  // Append received data to a string
     return total_size;
 }
 
-void parseJSONResponse(const char *json_string) {
-    // Parse the JSON string
-    cJSON *json = cJSON_Parse(json_string);
-    if (json == NULL) {
-        printf("Error parsing JSON data!\n");
+int check_duplicate(FILE *processed_file, const char *timestamp) {
+    char line[1024];
+    rewind(processed_file);  // Reset file pointer to the beginning of the file
+    while (fgets(line, sizeof(line), processed_file)) {
+        if (strstr(line, timestamp)) {
+            return 1;  // Duplicate found
+        }
+    }
+    return 0;  // No duplicate
+}
+
+void parse_weather_data(const char *data) {
+    // Parse the JSON data
+    cJSON *json_data = cJSON_Parse(data);
+    if (json_data == NULL) {
+        fprintf(stderr, "Error parsing JSON data: %s\n", cJSON_GetErrorPtr());
         return;
     }
 
-    // Get the "current_weather" object
-    cJSON *current_weather = cJSON_GetObjectItem(json, "current_weather");
-    if (!current_weather) {
-        printf("Error finding 'current_weather' object!\n");
-        cJSON_Delete(json);
+    // Extract the forecast list from JSON
+    cJSON *list = cJSON_GetObjectItem(json_data, "list");
+    if (!cJSON_IsArray(list)) {
+        fprintf(stderr, "Error: Unable to extract forecast data.\n");
+        cJSON_Delete(json_data);
         return;
     }
 
-    // Extract the temperature
-    double temperature = cJSON_GetObjectItem(current_weather, "temperature")->valuedouble;
+    // Open the processed CSV file for writing (append mode)
+    FILE *processed_file = fopen("processed_data.csv", "a");
+    if (!processed_file) {
+        fprintf(stderr, "Error opening processed data file.\n");
+        cJSON_Delete(json_data);
+        return;
+    }
 
-    // Extract the time as a string
-    const char *time = cJSON_GetObjectItem(current_weather, "time")->valuestring;
+    // Write headers to the CSV if it's the first time writing
+    if (ftell(processed_file) == 0) {
+        fprintf(processed_file, "Timestamp,Temperature (C),Humidity (%),Feels Like (C),Description\n");
+    }
 
-    // Print the extracted data
-    printf("Time: %s, Temperature: %.2f\n", time, temperature);
+    // Iterate through each forecast entry (3-hour intervals)
+    int num_entries = cJSON_GetArraySize(list);
+    for (int i = 0; i < num_entries; i++) {
+        cJSON *entry = cJSON_GetArrayItem(list, i);
+        
+        // Extract the timestamp (dt_txt)
+        cJSON *timestamp_item = cJSON_GetObjectItem(entry, "dt_txt");
+        if (!cJSON_IsString(timestamp_item)) continue;
+        const char *timestamp = timestamp_item->valuestring;
 
-    // Clean up
-    cJSON_Delete(json);
+        // Check if this timestamp already exists in the CSV file (to avoid duplicates)
+        if (check_duplicate(processed_file, timestamp)) {
+            printf("Duplicate data for %s found. Skipping...\n", timestamp);
+            continue;
+        }
+
+        // Extract weather data (temperature, humidity, feels like, description)
+        cJSON *main_data = cJSON_GetObjectItem(entry, "main");
+        cJSON *temp = cJSON_GetObjectItem(main_data, "temp");
+        cJSON *humidity = cJSON_GetObjectItem(main_data, "humidity");
+        cJSON *feels_like = cJSON_GetObjectItem(main_data, "feels_like");
+
+        cJSON *weather_array = cJSON_GetObjectItem(entry, "weather");
+        cJSON *weather_item = cJSON_GetArrayItem(weather_array, 0);
+        cJSON *description = cJSON_GetObjectItem(weather_item, "description");
+
+        if (temp && humidity && feels_like && description) {
+            // Convert temperature from Kelvin to Celsius
+            float temp_celsius = temp->valuedouble - 273.15;
+            float feels_like_celsius = feels_like->valuedouble - 273.15;
+
+            // Write the processed data to the CSV
+            fprintf(processed_file, "%s,%.2f,%.2f,%.2f,%s\n", 
+                    timestamp, 
+                    temp_celsius, 
+                    humidity->valuedouble, 
+                    feels_like_celsius, 
+                    description->valuestring);
+            printf("Processed data for %s saved.\n", timestamp);
+        }
+    }
+
+    // Close the processed CSV file
+    fclose(processed_file);
+
+    // Free the cJSON object after use
+    cJSON_Delete(json_data);
 }
 
 int main() {
     CURL *curl;
     CURLcode res;
-
-    struct MemoryStruct chunk;
-    chunk.memory = malloc(1);  // Start with a 1-byte buffer
-    chunk.size = 0;            // Initially, buffer is empty
+    char data[4096] = {0};  // Buffer to store the API response
 
     // Initialize CURL
     curl_global_init(CURL_GLOBAL_DEFAULT);
     curl = curl_easy_init();
+
     if (curl) {
-        // Set the URL for the request
-        curl_easy_setopt(curl, CURLOPT_URL, "https://api.open-meteo.com/v1/forecast?latitude=37.7749&longitude=-122.4194&current_weather=true");
+        // Set the URL for the request (forecast data)
+        curl_easy_setopt(curl, CURLOPT_URL, API_URL);
 
-        // Set callback function to handle data
+        // Set the callback function to handle the data
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
-
-        // Pass the chunk to the callback function
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, data);
 
         // Perform the request
         res = curl_easy_perform(curl);
 
         // Check for errors
         if (res != CURLE_OK) {
-            fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+            fprintf(stderr, "Request failed: %s\n", curl_easy_strerror(res));
         } else {
-            // Print the response for debugging purposes
-            printf("Response: %s\n", chunk.memory);
+            // Print the response (for debugging purposes)
+            printf("Response Data: %s\n", data);
 
-            // Parse the JSON response to extract specific data
-            parseJSONResponse(chunk.memory);
+            // Parse the JSON data and process it
+            parse_weather_data(data);
         }
 
-        // Clean up
+        // Cleanup
         curl_easy_cleanup(curl);
     }
 
-    // Free the memory allocated for the response
-    if (chunk.memory) {
-        free(chunk.memory);
-    }
-
-    // Cleanup CURL
+    // Global cleanup
     curl_global_cleanup();
 
     return 0;
