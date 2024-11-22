@@ -19,13 +19,14 @@ An **Environmental Monitoring System** that retrieves real-time weather data for
 ### **Prerequisites**
 - **GCC Compiler**
 - **libcurl** for API requests
-- **jq** for JSON processing (shell script)
+- **cjson** for retreive data from json
+- **jq** for JSON processing
 
 ### **Steps**
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/yourusername/environmental-monitoring-system.git
-   cd environmental-monitoring-system
+   git clone https://github.com/sumbalzehra88/environmental-monitoring-system-in-c.git
+   cd environmental-monitoring-system-in-c
 2. **Install Dependencies:**:
      - **Install libcurl**: 
        ```bash
@@ -45,11 +46,12 @@ An **Environmental Monitoring System** that retrieves real-time weather data for
    ```bash
    ./main
 5. **Run the Shell Script**:
-   ```bash
    - **for weather_automation**:
+     ```bash
      chmod +x weather_automation.sh
      ./weather_automation.sh
    - **for generate_alerts**:
+     ```bash
      chmod +x alerts.sh
      ./alerts.sh
 ### **Usage**
