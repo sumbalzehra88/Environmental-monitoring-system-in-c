@@ -1,12 +1,4 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <curl/curl.h>
-#include "../cjson/cJSON.h"
-
-#define API_KEY "50fe3f0f4010bb987bff53d51ee641c4"
-// Updated API URL for 5-day forecast (using latitude and longitude for Karachi)
-#define API_URL "https://api.openweathermap.org/data/2.5/forecast?lat=24.8607&lon=67.0011&appid=" API_KEY
+# include "../header.h" 
 
 // Callback function to handle the data received by API call through libcurl
 size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp) {
