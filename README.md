@@ -35,17 +35,20 @@ An **Environmental Monitoring System** that retrieves real-time weather data for
        sudo apt install libcurl4-openssl-dev
      - **Install jq**:
          ```bash
-         sudo apt install jq
+         sudo apt-get install jq
      - **Install JSON**:
          ```bash
           sudo apt install cjson
      - **Install bc**:
          ```bash
           sudo apt install bc
+      - **Install gdb**:
+         ```bash
+          sudo apt install gdb
 
 3. **Compile the Project:**:
    ```bash
-   gcc -o main src/main.c cjson/cJSON.c -Iinclude -Icjson -lcurl
+   gcc -o main main.c -lcurl -lcjson
 4. **Run the Program**:
    ```bash
    ./main
@@ -53,6 +56,12 @@ An **Environmental Monitoring System** that retrieves real-time weather data for
      ```bash
      chmod +x weather_automation.sh
      ./weather_automation.sh
+6. **Run the Data Log File**:
+     ```bash
+     cat weather_data_log.txt
+7. **Run the Cron Data Log File**:
+     ```bash
+     cat cron_weather_data_log.txt
    
 ### **Usage**
 
