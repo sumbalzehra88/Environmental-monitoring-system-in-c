@@ -21,6 +21,7 @@ An **Environmental Monitoring System** that retrieves real-time weather data for
 - **libcurl** for API requests
 - **cjson** for retreive data from json
 - **jq** for JSON processing
+- **bc** for handling float variables
 
 ### **Steps**
 1. **Clone the repository**:
@@ -38,6 +39,9 @@ An **Environmental Monitoring System** that retrieves real-time weather data for
      - **Install JSON**:
          ```bash
           sudo apt install cjson
+     - **Install bc**:
+         ```bash
+          sudo apt install bc
 
 3. **Compile the Project:**:
    ```bash
@@ -46,20 +50,14 @@ An **Environmental Monitoring System** that retrieves real-time weather data for
    ```bash
    ./main
 5. **Run the Shell Script**:
-   - **for weather_automation**:
      ```bash
      chmod +x weather_automation.sh
      ./weather_automation.sh
-   - **for generate_alerts**:
-     ```bash
-     chmod +x alerts.sh
-     ./alerts.sh
+   
 ### **Usage**
 
 - **API Data Retrieval**: Fetches 5-day weather forecasts for Karachi in JSON format.
-- **Alerts**:
-  - **Notifications**: Alerts are printed on the terminal.
-  - **Future Feature**: Email notifications for severe weather conditions.
+- **Alerts/Notifictions**: generate alerts/notifications when certain conditions meet. 
 
 ---
 
@@ -73,4 +71,5 @@ An **Environmental Monitoring System** that retrieves real-time weather data for
 ### **Key Improvements**
 - Support for multiple cities or dynamic location input.
 - Visualization of weather trends using graphs.
+- Support for the email/sms notifications/ alerts.
 - Enhanced error handling for API failures.
