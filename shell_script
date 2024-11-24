@@ -1,0 +1,89 @@
+#!/bin/bash
+
+# API details (Updated for 5-day forecast)
+API_URL="https://api.openweathermap.org/data/2.5/forecast?lat=24.8607&lon=67.0011&appid=50fe3f0f4010bb987bff53d51ee641c4"
+
+# File paths
+raw_data_file="raw_data.json"
+processed_data_file="processed_data.csv"
+log_file="weather_data_log.txt"
+
+# Step 1: Create the CSV file with headers if it doesn't exist
+if [ ! -f "$processed_data_file" ]; then
+    echo "Timestamp,Temperature (C),Humidity (%),Feels Like (C),Description" > "$processed_data_file"
+    echo "$(date): Created processed data file $processed_data_file." >> "$log_file"
+fi
+
+# Step 2: Retrieve data from the API (forecast data)
+echo "Retrieving forecast weather data..."
+echo "$(date): Retrieving forecast weather data..." >> "$log_file"
+curl -s "$API_URL" -o "$raw_data_file"
+
+if [ $? -ne 0 ]; then
+    echo "Failed to retrieve data."
+    echo "$(date): Failed to retrieve data from API." >> "$log_file"
+    exit 1
+fi
+
+echo "Weather data saved to $raw_data_file."
+echo "$(date): Weather data saved to $raw_data_file." >> "$log_file"
+
+# Step 3: Process the data with jq (Extract data for each 3-hour interval)
+echo "Processing weather data..."
+echo "$(date): Processing weather data..." >> "$log_file"
+
+# Loop through each forecast entry (every 3 hours)
+for i in $(seq 0 23); do
+    # Extract timestamp for each entry (every 3 hours)
+    TIMESTAMP=$(jq -r ".list[$i].dt_txt" "$raw_data_file")
+
+    # Check if the timestamp already exists in the CSV
+    if grep -q "$TIMESTAMP" "$processed_data_file"; then
+        echo "Duplicate data for $TIMESTAMP found. Skipping..."
+        echo "$(date): Duplicate data for $TIMESTAMP found. Skipping..." >> "$log_file"
+        continue
+    fi
+
+    # Extract temperature, humidity, feels_like, and description
+    TEMP=$(jq ".list[$i].main.temp" "$raw_data_file")
+    HUMIDITY=$(jq ".list[$i].main.humidity" "$raw_data_file")
+    FEELS_LIKE=$(jq ".list[$i].main.feels_like" "$raw_data_file")
+    DESCRIPTION=$(jq -r ".list[$i].weather[0].description" "$raw_data_file")
+
+    # Check if values are empty and set defaults if needed
+    if [ -z "$TEMP" ]; then TEMP=0; fi
+    if [ -z "$FEELS_LIKE" ]; then FEELS_LIKE=0; fi
+    if [ -z "$HUMIDITY" ]; then HUMIDITY=0; fi
+    if [ -z "$DESCRIPTION" ]; then DESCRIPTION="unknown"; fi
+
+    # Convert temperature from Kelvin to Celsius using bc
+    TEMP_C=$(echo "$TEMP - 273.15" | bc)
+    FEELS_LIKE_C=$(echo "$FEELS_LIKE - 273.15" | bc)
+
+    # Check for severe weather (temperature above 40°C)
+    if (( $(echo "$TEMP_C > 40" | bc -l) )); then
+        # Print the alert to terminal for severe weather
+        echo "Severe weather alert! Extremely high temperature of $TEMP_C°C at $TIMESTAMP."
+        echo "$(date): Severe weather alert! Extremely high temperature of $TEMP_C°C at $TIMESTAMP." >> "$log_file"
+    # Check if the temperature is pleasant (18°C to 30°C)
+    elif (( $(echo "$TEMP_C >= 18" | bc -l) && $(echo "$TEMP_C <= 30" | bc -l) )); then
+        echo "Pleasant weather with a temperature of $TEMP_C°C at $TIMESTAMP."
+        echo "$(date): Pleasant weather with a temperature of $TEMP_C°C at $TIMESTAMP." >> "$log_file"
+    # Check if it's cold (below 18°C)
+    elif (( $(echo "$TEMP_C < 18" | bc -l) )); then
+        echo "Cold weather with a temperature of $TEMP_C°C at $TIMESTAMP."
+        echo "$(date): Cold weather with a temperature of $TEMP_C°C at $TIMESTAMP." >> "$log_file"
+    # Check if it's summer (above 30°C)
+    else
+        echo "Summer weather with a temperature of $TEMP_C°C at $TIMESTAMP."
+        echo "$(date): Summer weather with a temperature of $TEMP_C°C at $TIMESTAMP." >> "$log_file"
+    fi
+
+    # Save processed data to the CSV file
+    echo "$TIMESTAMP,$TEMP_C,$HUMIDITY,$FEELS_LIKE_C,$DESCRIPTION" >> "$processed_data_file"
+    echo "Processed data for $TIMESTAMP saved to $processed_data_file."
+    echo "$(date): Processed data for $TIMESTAMP saved to $processed_data_file." >> "$log_file"
+done
+
+echo "Weather data collection for 24 hourly readings completed."
+echo "$(date): Weather data collection for 24 hourly readings completed." >> "$log_file"
